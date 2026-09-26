@@ -6,6 +6,78 @@
     "description": "Observation-only API. Computer keys cannot access account endpoints. Browser APIs require an account session cookie and workspace membership; mismatched browser Origins return 403."
   },
   "paths": {
+    "/api/computer/name": {
+      "post": {
+        "summary": "Rename this authenticated computer",
+        "description": "Changes only the label. Computer identity, reporting key, workspace and phone trust remain unchanged. A computer key cannot rename another computer.",
+        "security": [{ "computerBearer": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 80 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Renamed." },
+          "400": { "description": "Invalid name." },
+          "401": { "description": "Invalid or revoked computer key." }
+        }
+      }
+    },
+    "/api/computers/{id}": {
+      "patch": {
+        "summary": "Rename a workspace computer",
+        "security": [{ "accountCookie": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Required when the account has multiple workspaces."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Renamed without rotating keys or changing identity."
+          },
+          "400": { "description": "Invalid name or workspace." },
+          "401": { "description": "Sign-in required." },
+          "403": { "description": "Workspace administrator required." },
+          "404": {
+            "description": "Computer not found in workspace or revoked."
+          }
+        }
+      }
+    },
     "/api/computers": {
       "get": {
         "summary": "List computer inventory",

@@ -92,6 +92,19 @@ export class InventoryStore {
       .get(id);
     return row ? String(row.workspace_id) : undefined;
   }
+  rename(id: string, name: string, workspaceId?: string): boolean {
+    const result = workspaceId
+      ? this.db
+          .prepare(
+            "UPDATE computers SET name=? WHERE id=? AND workspace_id=? AND revoked=0",
+          )
+          .run(name, id, workspaceId)
+      : this.db
+          .prepare("UPDATE computers SET name=? WHERE id=? AND revoked=0")
+          .run(name, id);
+    return result.changes === 1;
+  }
+
   revoke(id: string, workspaceId?: string): boolean {
     const result = workspaceId
       ? this.db
