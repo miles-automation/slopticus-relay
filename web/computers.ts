@@ -22,16 +22,41 @@ export function computersHTML(
         `<li class="inventory-session"><div><strong>${escape(item.project || "Untitled project")}</strong><span class="tag${item.stale ? " off" : ""}">${item.stale && item.activity !== "ended" ? "Unknown · stale" : escape(item.activity)}</span></div><p>${item.provider === "claude" ? "Claude" : "Codex"} · ${escape(item.surface === "unknown" ? "Surface unknown" : item.surface)} · ${escape(item.native.slice(0, 12))}</p><small>Launch ${escape(item.instance.slice(0, 8))} · Last observation ${escape(new Date(item.observed).toLocaleString())} · Observation only</small></li>`;
       const open = computer.sessions.filter((s) => s.activity !== "ended"),
         ended = computer.sessions.filter((s) => s.activity === "ended");
-      return `<article class="computer-card"><div class="computer-heading"><h2>${escape(computer.name)}</h2><span class="tag">${computer.revoked ? "Disconnected" : computer.online ? "Computer online" : "Computer offline"}</span>${computer.revoked || !canManage ? "" : `<button class="quiet disconnect-computer" data-id="${escape(computer.id)}">Disconnect</button>`}</div><p class="muted">${computer.last_seen ? `Last report ${escape(new Date(computer.last_seen).toLocaleString())}` : "Waiting for the companion to connect"}</p><p>Coverage: ${computer.coverage === "degraded" ? "Partial: some observations could not be read or exceeded the 200-instance limit." : computer.coverage === "unconnected" ? "Not yet established." : "Instrumented Claude sessions and Slopticus-managed Claude/Codex sessions."} Independently opened Codex sessions and Claude Chat/Cowork are not covered.</p><ul class="inventory-list">${open.map(session).join("") || '<li class="muted">No sessions detected yet. In Slopticus for Mac, choose Enable Claude detection if offered. Claude Code sessions appear on their next activity after detection is enabled. Idle sessions may not appear yet; project or organization settings can restrict hooks.</li>'}</ul>${ended.length ? `<details><summary>${ended.length} ended launches</summary><ul class="inventory-list">${ended.map(session).join("")}</ul></details>` : ""}</article>`;
+      return `<article class="computer-card"><div class="computer-heading"><h2>${escape(computer.name)}</h2><span class="tag">${computer.revoked ? "Disconnected" : computer.online ? "Computer online" : "Computer offline"}</span>${computer.revoked || !canManage ? "" : `<button class="quiet rename-computer" data-id="${escape(computer.id)}" data-name="${escape(computer.name)}">Rename</button><button class="quiet disconnect-computer" data-id="${escape(computer.id)}">Disconnect</button>`}</div><p class="muted">${computer.last_seen ? `Last report ${escape(new Date(computer.last_seen).toLocaleString())}` : "Waiting for the companion to connect"}</p><p>Coverage: ${computer.coverage === "degraded" ? "Partial: some observations could not be read or exceeded the 200-instance limit." : computer.coverage === "unconnected" ? "Not yet established." : "Instrumented Claude sessions and Slopticus-managed Claude/Codex sessions."} Independently opened Codex sessions and Claude Chat/Cowork are not covered.</p><ul class="inventory-list">${open.map(session).join("") || '<li class="muted">No sessions detected yet. In Slopticus for Mac, choose Enable Claude detection if offered. Claude Code sessions appear on their next activity after detection is enabled. Idle sessions may not appear yet; project or organization settings can restrict hooks.</li>'}</ul>${ended.length ? `<details><summary>${ended.length} ended launches</summary><ul class="inventory-list">${ended.map(session).join("")}</ul></details>` : ""}</article>`;
     })
     .join("");
-  return `<main class="computers-pane"><div class="computer-heading"><h1>Computers</h1>${canManage ? '<button id="pair-computer">Connect a computer</button>' : ""}</div><p>See sessions observed on each paired computer. Activity is the last reported state; unknown means Slopticus cannot establish whether the session is still open.</p><p id="status" role="status"></p>${rows || '<div class="empty"><h2>No computers connected yet</h2><p>Download Slopticus for Mac, move it to Applications, and open it. The connection window opens automatically on a new Mac; choose <strong>Connect this Mac</strong> and approve the matching code here.</p><p><a href="https://slopticus.com/download/mac/arm64">Download for Apple silicon</a> · <a href="https://slopticus.com/download/mac/x64">Download for Intel</a></p><p>If you run your own relay, enter this site’s HTTPS address in the Mac connection window.</p></div>'}</main>`;
+  return `<main class="computers-pane"><div class="computer-heading"><h1>Computers</h1>${canManage ? '<button id="pair-computer">Connect a computer</button>' : ""}</div><p>See sessions observed on each paired computer. Activity is the last reported state; unknown means Slopticus cannot establish whether the session is still open.</p><p id="status" role="status"></p>${rows || '<div class="empty"><h2>No computers connected yet</h2><p>Download Slopticus for Mac, move it to Applications, and open it. Choose <strong>Devices</strong> in the app sidebar; choose <strong>Connect this Mac</strong> and approve the matching code here.</p><p><a href="https://slopticus.com/download/mac/arm64">Download for Apple silicon</a> · <a href="https://slopticus.com/download/mac/x64">Download for Intel</a></p><p>If you run your own relay, enter this site’s HTTPS address in the Devices page.</p></div>'}</main>`;
 }
 export function wireComputers(
-  api: (path: string, body?: unknown) => Promise<unknown>,
+  api: (path: string, body?: unknown, method?: string) => Promise<unknown>,
   refresh: () => Promise<void>,
   workspaceId?: string,
 ): void {
+  document
+    .querySelectorAll<HTMLButtonElement>(".rename-computer")
+    .forEach((button) => {
+      button.onclick = async (): Promise<void> => {
+        const name = prompt("Computer name", button.dataset.name)?.trim();
+        if (!name) return;
+        if (name.length > 80) {
+          document.querySelector("#status")!.textContent =
+            "Use at most 80 characters.";
+          return;
+        }
+        try {
+          await api(
+            `computers/${button.dataset.id}`,
+            { name, workspace_id: workspaceId },
+            "PATCH",
+          );
+          await refresh();
+        } catch (error) {
+          document.querySelector("#status")!.textContent = (
+            error as Error
+          ).message;
+        }
+      };
+    });
   document
     .querySelectorAll<HTMLButtonElement>(".disconnect-computer")
     .forEach((button) => {
@@ -60,7 +85,7 @@ export function wireComputers(
     pairButton.onclick = (): void => {
       const dialog = document.querySelector<HTMLDialogElement>("#setup")!;
       dialog.innerHTML =
-        '<button class="quiet close">Close ×</button><h2>Connect your Mac</h2><p>On the Mac you want to connect, install and open Slopticus. The connection window opens automatically on a new Mac. Enter this relay’s HTTPS address, choose <strong>Connect this Mac</strong>, and approve the matching code when your browser opens here.</p><p><a href="https://slopticus.com/download/mac/arm64">Download for Apple silicon</a> · <a href="https://slopticus.com/download/mac/x64">Download for Intel</a></p><p class="muted">No commands or access keys to copy.</p><p class="muted">Slopticus reports supported coding sessions and activity. Prompts and transcripts stay on your computer.</p>';
+        '<button class="quiet close">Close ×</button><h2>Connect your Mac</h2><p>On the Mac you want to connect, install and open Slopticus. Choose <strong>Devices</strong> in the app sidebar. Enter this relay’s HTTPS address, choose <strong>Connect this Mac</strong>, and approve the matching code when your browser opens here.</p><p><a href="https://slopticus.com/download/mac/arm64">Download for Apple silicon</a> · <a href="https://slopticus.com/download/mac/x64">Download for Intel</a></p><p class="muted">No commands or access keys to copy.</p><p class="muted">Slopticus reports supported coding sessions and activity. Prompts and transcripts stay on your computer.</p>';
       dialog.querySelector<HTMLButtonElement>(".close")!.onclick = (): void => {
         dialog.close();
         void refresh();

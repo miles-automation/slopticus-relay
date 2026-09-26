@@ -199,6 +199,28 @@ export function createApp(
       .parse(req.body);
     res.status(201).json(inventory.pair(name, undefined, workspaceId));
   });
+  app.patch("/api/computers/:id", signedIn, (req, res) => {
+    const workspaceId = selectedWorkspace(req, res, true);
+    if (!workspaceId) return;
+    const { name } = z
+      .object({
+        name: text.max(80),
+        workspace_id: z.string().uuid().optional(),
+      })
+      .strict()
+      .parse(req.body);
+    if (
+      !inventory.rename(
+        z.string().uuid().parse(req.params.id),
+        name,
+        workspaceId,
+      )
+    ) {
+      res.status(404).json({ error: "Computer not found in workspace" });
+      return;
+    }
+    res.json({ ok: true });
+  });
   app.post("/api/computers/:id/revoke", signedIn, (req, res) => {
     const workspaceId = selectedWorkspace(req, res, true);
     if (!workspaceId) return;
@@ -228,6 +250,14 @@ export function createApp(
         .find((computer) => computer.id === res.locals.computerId),
     ),
   );
+  app.post("/api/computer/name", (req, res) => {
+    const { name } = z
+      .object({ name: text.max(80) })
+      .strict()
+      .parse(req.body);
+    inventory.rename(res.locals.computerId as string, name);
+    res.json({ ok: true });
+  });
   app.post("/api/computer/disconnect", (_req, res) => {
     inventory.revoke(res.locals.computerId as string);
     res.json({ ok: true });

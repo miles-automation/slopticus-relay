@@ -34,9 +34,9 @@ let computers: ComputerView[] | undefined,
   signupEnabled = false,
   painted = "",
   handledHash = "";
-async function api(path: string, body?: unknown) {
+async function api(path: string, body?: unknown, method?: string) {
   const response = await fetch(`/api/${path}`, {
-    method: body === undefined ? "GET" : "POST",
+    method: method ?? (body === undefined ? "GET" : "POST"),
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
