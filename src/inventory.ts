@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { LEGACY_WORKSPACE_ID } from "./tenancy.js";
 
 export const INVENTORY_TTL = 45000;
 export const observationSchema = z
@@ -67,14 +66,11 @@ export class InventoryStore {
       db.exec(
         "ALTER TABLE computers ADD COLUMN workspace_id TEXT REFERENCES workspaces(id)",
       );
-    db.prepare(
-      "UPDATE computers SET workspace_id=? WHERE workspace_id IS NULL",
-    ).run(LEGACY_WORKSPACE_ID);
   }
   pair(
     name: string,
     token = randomUUID() + randomUUID(),
-    workspaceId = LEGACY_WORKSPACE_ID,
+    workspaceId: string,
   ): { id: string; token: string } {
     const id = randomUUID();
     this.db

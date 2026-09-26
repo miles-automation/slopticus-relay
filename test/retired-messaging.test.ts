@@ -1,17 +1,25 @@
 import { test } from "node:test";
+
 import assert from "node:assert/strict";
+
 import type { Server } from "node:http";
+
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+
 import { DatabaseSync } from "node:sqlite";
+
 import { tmpdir } from "node:os";
+
 import { join } from "node:path";
+
 import { Store } from "../src/store.js";
+
 import { createApp } from "../src/app.js";
 
 test("old agent, inbox and session routes answer 426 so installed listeners stop", async () => {
   const store = new Store(":memory:");
   const server: Server = createApp(store, {
-    ownerToken: "o".repeat(40),
+    publicSignup: true,
     origin: "https://slopticus.test",
   }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -48,7 +56,7 @@ test("old agent, inbox and session routes answer 426 so installed listeners stop
   }
 });
 
-test("opening the relay store scrubs retired messaging data, even after an interrupted purge, and keeps logins", () => {
+test("opening the relay store scrubs retired messaging data, even after an interrupted purge, and removes owner logins", () => {
   const dir = mkdtempSync(join(tmpdir(), "slopticus-retired-db-"));
   const path = join(dir, "slopticus.sqlite");
   const old = new DatabaseSync(path);
@@ -90,7 +98,7 @@ test("opening the relay store scrubs retired messaging data, even after an inter
       const store = new Store(path);
       assert.equal(
         store.db.prepare("PRAGMA user_version").get()?.user_version,
-        1,
+        2,
       );
       const tables = store.db
         .prepare(
@@ -99,25 +107,27 @@ test("opening the relay store scrubs retired messaging data, even after an inter
         .all()
         .map((row) => row.name);
       assert.deepEqual(tables, [
-        "access_codes",
         "account_access_codes",
         "account_logins",
         "accounts",
-        "logins",
+        "computer_pairings",
+        "computers",
+        "inventory_instances",
         "organization_members",
         "organizations",
-        "tenancy_settings",
         "workspace_invitations",
         "workspace_members",
         "workspaces",
       ]);
       for (const file of [path, `${path}-wal`])
         if (existsSync(file))
-          assert.equal(readFileSync(file).includes("secret"), false, file);
-      assert.equal(
-        store.db.prepare("SELECT count(*) AS n FROM logins").get()?.n,
-        1,
-      );
+          for (const retired of [
+            "secret prompt",
+            "secret reply",
+            "secret outbound",
+            "secret in wal",
+          ])
+            assert.equal(readFileSync(file).includes(retired), false, file);
       store.close();
     }
   } finally {

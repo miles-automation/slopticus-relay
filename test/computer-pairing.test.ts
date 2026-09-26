@@ -1,9 +1,16 @@
+import { createTestWorkspace } from "./workspace.js";
 import { test } from "node:test";
+
 import assert from "node:assert/strict";
+
 import { Store } from "../src/store.js";
+
 import { InventoryStore } from "../src/inventory.js";
+
 import { ComputerPairing, PAIRING_TTL } from "../src/computer-pairing.js";
+
 import { createApp } from "../src/app.js";
+
 import { pairingHTML } from "../web/computers.js";
 
 test("computer approval requires the private claim secret, survives retry, expires and respects revocation", () => {
@@ -21,7 +28,10 @@ test("computer approval requires the private claim secret, survives retry, expir
       approved: false,
     });
     assert.equal(inventory.list().length, 0);
-    assert.equal(pairing.decide(pending.code, true, 1001), true);
+    assert.equal(
+      pairing.decide(pending.code, true, 1001, createTestWorkspace(store.db)),
+      true,
+    );
     const result = pairing.claim(pending.device_code, 1002);
     assert.equal(result?.status, "approved");
     if (result?.status !== "approved") throw new Error("Missing credential");
@@ -41,7 +51,10 @@ test("computer approval requires the private claim secret, survives retry, expir
       undefined,
     );
     const declined = pairing.begin("No", 2000);
-    assert.equal(pairing.decide(declined.code, false, 2001), true);
+    assert.equal(
+      pairing.decide(declined.code, false, 2001, createTestWorkspace(store.db)),
+      true,
+    );
     assert.equal(pairing.claim(declined.device_code, 2002), undefined);
     assert.equal(inventory.list().length, 1);
   } finally {
@@ -52,7 +65,7 @@ test("computer approval requires the private claim secret, survives retry, expir
 test("pairing HTTP approval is owner-only, cross-origin protected and credentials remain inventory-scoped", async () => {
   const store = new Store(":memory:");
   const server = createApp(store, {
-    ownerToken: "x".repeat(40),
+    publicSignup: true,
     origin: "http://localhost",
   }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -82,7 +95,11 @@ test("pairing HTTP approval is owner-only, cross-origin protected and credential
       ).status,
       401,
     );
-    const login = await call("login", { token: "x".repeat(40) });
+    const login = await call("signup", {
+      username: "testowner",
+      display_name: "Test owner",
+      password: "safe test password 123",
+    });
     const cookie = login.headers.get("set-cookie")!.split(";")[0];
     assert.equal(
       (

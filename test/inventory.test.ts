@@ -1,16 +1,26 @@
+import { createTestWorkspace } from "./workspace.js";
 import { test } from "node:test";
+
 import assert from "node:assert/strict";
+
 import { randomUUID } from "node:crypto";
+
 import { mkdtempSync, rmSync } from "node:fs";
+
 import { join } from "node:path";
+
 import { tmpdir } from "node:os";
+
 import { Store } from "../src/store.js";
+
 import { createApp } from "../src/app.js";
+
 import {
   InventoryStore,
   INVENTORY_TTL,
   type Observation,
 } from "../src/inventory.js";
+
 import { computersHTML } from "../web/computers.js";
 
 function observation(overrides: Partial<Observation> = {}): Observation {
@@ -26,12 +36,17 @@ function observation(overrides: Partial<Observation> = {}): Observation {
     ...overrides,
   };
 }
+
 test("inventory persists distinct launches, rejects sequence conflicts, expires presence without declaring closure", () => {
   const directory = mkdtempSync(join(tmpdir(), "slopticus-inventory-"));
   let store = new Store(join(directory, "relay.sqlite"));
   try {
     let inventory = new InventoryStore(store.db);
-    const computer = inventory.pair("Work"),
+    const computer = inventory.pair(
+        "Work",
+        undefined,
+        createTestWorkspace(store.db),
+      ),
       a = observation(),
       b = observation();
     const report = {
@@ -99,11 +114,12 @@ test("inventory persists distinct launches, rejects sequence conflicts, expires 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
 test("computer credentials cannot read owner data, send agent messages, or report for another computer", async () => {
   const store = new Store(":memory:");
   const server = createApp(store, {
     origin: "http://localhost",
-    ownerToken: "x".repeat(40),
+    publicSignup: true,
   }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -124,7 +140,11 @@ test("computer credentials cannot read owner data, send agent messages, or repor
     });
   try {
     assert.equal((await request("/api/computers")).status, 401);
-    const login = await request("/api/login", "", { token: "x".repeat(40) });
+    const login = await request("/api/signup", "", {
+      username: "testowner",
+      display_name: "Test owner",
+      password: "safe test password 123",
+    });
     const cookie = login.headers.get("set-cookie")!.split(";")[0];
     const first = (await (
       await request("/api/computers", "", { name: "Work" }, cookie)
@@ -188,6 +208,7 @@ test("computer credentials cannot read owner data, send agent messages, or repor
     store.close();
   }
 });
+
 test("computer UI escapes host/project metadata, distinguishes stale observations and discloses coverage", () => {
   const html = computersHTML([
     {

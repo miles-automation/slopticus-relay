@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Slopticus computer inventory",
-    "version": "0.15.0",
-    "description": "Observation-only API. Computer keys cannot access account endpoints. Browser APIs require an account session cookie and workspace membership; mismatched browser Origins return 403. A legacy owner session is limited to the private migration workspace until claimed."
+    "version": "0.15.1",
+    "description": "Observation-only API. Computer keys cannot access account endpoints. Browser APIs require an account session cookie and workspace membership; mismatched browser Origins return 403."
   },
   "paths": {
     "/api/computers": {

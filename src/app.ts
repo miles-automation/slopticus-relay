@@ -1,14 +1,10 @@
 import { ComputerPairing } from "./computer-pairing.js";
 import { InventoryStore, reportSchema } from "./inventory.js";
 import express from "express";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { Store, hash, token } from "./store.js";
-import {
-  LEGACY_WORKSPACE_ID,
-  LegacyAlreadyClaimedError,
-  TenancyStore,
-} from "./tenancy.js";
+import { TenancyStore } from "./tenancy.js";
 import { releaseRoutes } from "./releases.js";
 import { VERSION, PROTOCOL } from "./protocol.js";
 
@@ -19,21 +15,17 @@ const usernameSchema = z
   .toLowerCase()
   .regex(/^[a-z0-9][a-z0-9._-]{2,31}$/);
 const passwordSchema = z.string().min(12).max(128);
-type Principal = { accountId: string } | { accountId: null };
+type Principal = { accountId: string };
 export function createApp(
   store: Store,
   options: {
-    ownerToken: string;
     origin: string;
     publicSignup?: boolean;
     publicDir?: string;
     releasesDir?: string;
   },
 ) {
-  if (options.ownerToken && options.ownerToken.length < 32)
-    throw new Error("SLOPTICUS_OWNER_TOKEN must be at least 32 characters");
-  const publicSignupEnabled =
-    options.publicSignup === true && !options.ownerToken;
+  const publicSignupEnabled = options.publicSignup === true;
   const app = express();
   app.disable("x-powered-by");
   app.use((_req, res, next) => {
@@ -81,15 +73,6 @@ export function createApp(
       .get(tokenHash);
     if (account && Number(account.expires) > Date.now())
       return { accountId: String(account.account_id) };
-    const legacy = store.db
-      .prepare("SELECT expires FROM logins WHERE token_hash=?")
-      .get(tokenHash);
-    if (
-      legacy &&
-      Number(legacy.expires) > Date.now() &&
-      !tenancy.isLegacyClaimed()
-    )
-      return { accountId: null };
     return undefined;
   };
   const signedIn: express.RequestHandler = (req, res, next) => {
@@ -107,7 +90,6 @@ export function createApp(
     manage: boolean,
   ): string | undefined => {
     const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) return LEGACY_WORKSPACE_ID;
     const requested =
       req.method === "GET" ? req.query.workspace_id : req.body?.workspace_id;
     const workspaces = tenancy.workspaces(principal.accountId);
@@ -301,25 +283,18 @@ export function createApp(
   };
   const openLogin = (
     res: express.Response,
-    accountId: string | null,
+    accountId: string,
     result: Record<string, unknown> = { ok: true },
   ): void => {
     const key = token();
-    store.db.prepare("DELETE FROM logins WHERE expires<=?").run(Date.now());
     store.db
       .prepare("DELETE FROM account_logins WHERE expires<=?")
       .run(Date.now());
     store.db
       .prepare(
-        accountId === null
-          ? "INSERT INTO logins(token_hash,expires) VALUES(?,?)"
-          : "INSERT INTO account_logins(token_hash,expires,account_id) VALUES(?,?,?)",
+        "INSERT INTO account_logins(token_hash,expires,account_id) VALUES(?,?,?)",
       )
-      .run(
-        ...(accountId === null
-          ? [hash(key), Date.now() + 30 * 86400000]
-          : [hash(key), Date.now() + 30 * 86400000, accountId]),
-      );
+      .run(hash(key), Date.now() + 30 * 86400000, accountId);
     res.cookie("slopticus", key, {
       httpOnly: true,
       secure: options.origin.startsWith("https:"),
@@ -329,25 +304,8 @@ export function createApp(
     });
     res.json(result);
   };
-  app.post("/api/login", loginLimit, (req, res) => {
-    const candidate = typeof req.body?.token === "string" ? req.body.token : "";
-    if (
-      tenancy.isLegacyClaimed() ||
-      !options.ownerToken ||
-      !timingSafeEqual(
-        Buffer.from(hash(candidate)),
-        Buffer.from(hash(options.ownerToken)),
-      )
-    ) {
-      attempt(req).failures++;
-      res.status(401).json({ error: "Incorrect owner recovery key" });
-      return;
-    }
-    openLogin(res, null);
-  });
   app.post("/api/signup", loginLimit, async (req, res) => {
-    const migratingLegacy = principalFor(req)?.accountId === null;
-    if (!publicSignupEnabled && !migratingLegacy) {
+    if (!publicSignupEnabled) {
       res.status(403).json({ error: "Account creation is not open yet" });
       return;
     }
@@ -375,25 +333,13 @@ export function createApp(
     }
     try {
       const created = await passwordOperation(() =>
-        tenancy.createAccount(
-          username,
-          display_name,
-          password,
-          migratingLegacy,
-        ),
+        tenancy.createAccount(username, display_name, password),
       );
       openLogin(res, created.account_id, {
         recovery_code: created.recovery_code,
         workspace_id: created.workspace_id,
       });
     } catch (error) {
-      if (error instanceof LegacyAlreadyClaimedError) {
-        res.status(409).json({
-          error:
-            "Existing computers were already claimed. Sign in to your account.",
-        });
-        return;
-      }
       if (
         String(error).includes("UNIQUE constraint failed: accounts.username")
       ) {
@@ -463,65 +409,14 @@ export function createApp(
   });
   app.get("/api/me", signedIn, (_req, res) => {
     const principal = res.locals.principal as Principal;
-    res.json(
-      principal.accountId === null
-        ? {
-            kind: "legacy",
-            workspaces: [
-              {
-                id: LEGACY_WORKSPACE_ID,
-                name: "Existing computers",
-                kind: "private",
-                organization_id: "00000000-0000-4000-8000-000000000001",
-                organization_name: "Existing Slopticus",
-                role: "owner",
-                organization_role: "owner",
-              },
-            ],
-          }
-        : {
-            kind: "account",
-            account: tenancy.account(principal.accountId),
-            workspaces: tenancy.workspaces(principal.accountId),
-            legacy_available:
-              Boolean(options.ownerToken) && !tenancy.isLegacyClaimed(),
-          },
-    );
-  });
-  app.post("/api/legacy/claim", signedIn, (req, res) => {
-    const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) {
-      res.status(403).json({ error: "Create your account first" });
-      return;
-    }
-    const { recovery_key } = z
-      .object({ recovery_key: z.string() })
-      .strict()
-      .parse(req.body);
-    if (
-      !options.ownerToken ||
-      !timingSafeEqual(
-        Buffer.from(hash(recovery_key)),
-        Buffer.from(hash(options.ownerToken)),
-      )
-    ) {
-      res.status(401).json({ error: "Incorrect owner recovery key" });
-      return;
-    }
-    if (!tenancy.claimLegacy(principal.accountId)) {
-      res
-        .status(409)
-        .json({ error: "Existing computers were already claimed" });
-      return;
-    }
-    res.json({ workspace_id: LEGACY_WORKSPACE_ID });
+    res.json({
+      kind: "account",
+      account: tenancy.account(principal.accountId),
+      workspaces: tenancy.workspaces(principal.accountId),
+    });
   });
   app.post("/api/organizations", signedIn, (req, res) => {
     const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) {
-      res.status(403).json({ error: "Create your account first" });
-      return;
-    }
     const { name } = z
       .object({ name: text.max(80) })
       .strict()
@@ -530,10 +425,6 @@ export function createApp(
   });
   app.post("/api/organizations/:id/workspaces", signedIn, (req, res) => {
     const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) {
-      res.status(403).json({ error: "Create your account first" });
-      return;
-    }
     const { name } = z
       .object({ name: text.max(80) })
       .strict()
@@ -551,13 +442,10 @@ export function createApp(
   });
   app.get("/api/organizations/:id/members", signedIn, (req, res) => {
     const principal = res.locals.principal as Principal;
-    const members =
-      principal.accountId === null
-        ? undefined
-        : tenancy.organizationMembers(
-            principal.accountId,
-            z.string().uuid().parse(req.params.id),
-          );
+    const members = tenancy.organizationMembers(
+      principal.accountId,
+      z.string().uuid().parse(req.params.id),
+    );
     if (!members) {
       res.status(403).json({ error: "Organization owner required" });
       return;
@@ -570,7 +458,6 @@ export function createApp(
     (req, res) => {
       const principal = res.locals.principal as Principal;
       if (
-        principal.accountId === null ||
         !tenancy.removeOrganizationMember(
           principal.accountId,
           z.string().uuid().parse(req.params.id),
@@ -585,10 +472,6 @@ export function createApp(
   );
   app.post("/api/workspaces/:id/invitations", signedIn, (req, res) => {
     const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) {
-      res.status(403).json({ error: "Create your account first" });
-      return;
-    }
     const { role } = z
       .object({ role: z.enum(["member", "admin", "organization_admin"]) })
       .strict()
@@ -608,10 +491,6 @@ export function createApp(
   });
   app.get("/api/workspaces/:id/members", signedIn, (req, res) => {
     const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) {
-      res.status(403).json({ error: "Create your account first" });
-      return;
-    }
     const members = tenancy.members(
       principal.accountId,
       z.string().uuid().parse(req.params.id),
@@ -628,7 +507,6 @@ export function createApp(
     (req, res) => {
       const principal = res.locals.principal as Principal;
       if (
-        principal.accountId === null ||
         !tenancy.removeMember(
           principal.accountId,
           z.string().uuid().parse(req.params.id),
@@ -643,10 +521,6 @@ export function createApp(
   );
   app.post("/api/invitations/accept", signedIn, (req, res) => {
     const principal = res.locals.principal as Principal;
-    if (principal.accountId === null) {
-      res.status(403).json({ error: "Create your account first" });
-      return;
-    }
     const { code } = z
       .object({ code: z.string().min(20).max(128) })
       .strict()
@@ -659,9 +533,7 @@ export function createApp(
     res.json(workspace);
   });
   app.post("/api/access-codes", signedIn, (req, res) => {
-    const principal = res.locals.principal as Principal;
-    const table =
-      principal.accountId === null ? "access_codes" : "account_access_codes";
+    const table = "account_access_codes";
     const code = randomBytes(12).toString("hex").toUpperCase();
     const expires = Date.now() + 10 * 60000;
     store.db.prepare(`DELETE FROM ${table} WHERE expires<=?`).run(Date.now());
@@ -673,9 +545,7 @@ export function createApp(
     res.json({ code: code.match(/.{4}/g)!.join("-"), expires });
   });
   app.delete("/api/access-codes", signedIn, (req, res) => {
-    const principal = res.locals.principal as Principal;
-    const table =
-      principal.accountId === null ? "access_codes" : "account_access_codes";
+    const table = "account_access_codes";
     store.db
       .prepare(`DELETE FROM ${table} WHERE login_hash=?`)
       .run(hash(cookieToken(req)));
@@ -693,15 +563,7 @@ export function createApp(
           )
           .get(hash(candidate), Date.now(), Date.now())
       : undefined;
-    const legacyCode =
-      !accountCode && /^[A-F0-9]{24}$/.test(candidate)
-        ? store.db
-            .prepare(
-              "DELETE FROM access_codes WHERE code_hash=? AND expires>? AND login_hash IN (SELECT token_hash FROM logins WHERE expires>?) RETURNING login_hash",
-            )
-            .get(hash(candidate), Date.now(), Date.now())
-        : undefined;
-    if (!accountCode && !legacyCode) {
+    if (!accountCode) {
       attempt(req).failures++;
       res.status(401).json({
         error:
@@ -709,24 +571,18 @@ export function createApp(
       });
       return;
     }
-    const source = accountCode
-      ? store.db
-          .prepare("SELECT account_id FROM account_logins WHERE token_hash=?")
-          .get(accountCode.login_hash!)
-      : store.db
-          .prepare("SELECT token_hash FROM logins WHERE token_hash=?")
-          .get(legacyCode!.login_hash!);
-    if (!source || (legacyCode && tenancy.isLegacyClaimed())) {
+    const source = store.db
+      .prepare("SELECT account_id FROM account_logins WHERE token_hash=?")
+      .get(accountCode.login_hash!);
+    if (!source) {
       res.status(401).json({ error: "Source sign-in expired" });
       return;
     }
-    openLogin(res, accountCode ? String(source.account_id) : null);
+    openLogin(res, String(source.account_id));
   });
   app.post("/api/logout", signedIn, (req, res) => {
-    const principal = res.locals.principal as Principal;
-    const table = principal.accountId === null ? "logins" : "account_logins";
     store.db
-      .prepare(`DELETE FROM ${table} WHERE token_hash=?`)
+      .prepare("DELETE FROM account_logins WHERE token_hash=?")
       .run(hash(cookieToken(req)));
     res.clearCookie("slopticus", { path: "/" });
     res.json({ ok: true });

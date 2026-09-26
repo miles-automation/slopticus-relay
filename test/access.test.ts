@@ -104,11 +104,11 @@ test("self-host guide provides a complete independent relay path", () => {
   );
 });
 
-test("account sign-in explains signup, recovery, and legacy migration", () => {
+test("account sign-in exposes signup without legacy migration", () => {
   const consoleLogin = loginHTML("console");
   assert.match(consoleLogin, /Create an account/);
   assert.match(consoleLogin, /Recover an account/);
-  assert.match(consoleLogin, /Existing owner recovery key/);
+  assert.doesNotMatch(consoleLogin, /owner recovery|single-owner|migration/i);
   assert.ok(consoleLogin.includes(ONE_USE_CODE_DISCLOSURE));
   assert.ok(signInAnotherDeviceInstruction().includes(ONE_USE_CODE_DISCLOSURE));
   assert.ok(
@@ -123,7 +123,6 @@ test("account sign-in explains signup, recovery, and legacy migration", () => {
   const closedLogin = loginHTML("console", false);
   assert.doesNotMatch(closedLogin, /id="signup"/);
   assert.match(closedLogin, /not open yet/);
-  assert.match(loginHTML("console", false, true), /id="signup"/);
   assert.match(landingHTML(false), /temporarily closed/);
 });
 
@@ -135,15 +134,19 @@ async function fixture(): Promise<{
 }> {
   const store = new Store(":memory:");
   const server: Server = createApp(store, {
-    ownerToken: "o".repeat(40),
+    publicSignup: true,
     origin: "https://slopticus.test",
   }).listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
   const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const response = await fetch(`${base}/api/login`, {
+  const response = await fetch(`${base}/api/signup`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ token: "o".repeat(40) }),
+    body: JSON.stringify({
+      username: "testowner",
+      display_name: "Test owner",
+      password: "safe test password 123",
+    }),
   });
   assert.equal(response.status, 200);
   const cookie = response.headers.get("set-cookie")!.split(";")[0];
@@ -188,18 +191,9 @@ function redeem(
   });
 }
 
-test("a signed-in owner can create a one-use code without exposing the owner key", async () => {
+test("a signed-in account can create a scoped one-use code", async () => {
   const { store, base, cookie, close } = await fixture();
   try {
-    const wrongKey = await fetch(`${base}/api/login`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token: "w".repeat(40) }),
-    });
-    assert.equal(wrongKey.status, 401);
-    assert.deepEqual(await wrongKey.json(), {
-      error: "Incorrect owner recovery key",
-    });
     assert.match(cookie, /^slopticus=/);
     assert.equal(
       (
@@ -223,7 +217,7 @@ test("a signed-in owner can create a one-use code without exposing the owner key
       403,
     );
     const code = await createCode(base, cookie);
-    const row = store.db.prepare("SELECT * FROM access_codes").get()!;
+    const row = store.db.prepare("SELECT * FROM account_access_codes").get()!;
     assert.equal(row.code_hash, hash(code.replaceAll("-", "")));
     assert.ok(!JSON.stringify(row).includes(code));
     assert.equal(
@@ -253,7 +247,8 @@ test("a signed-in owner can create a one-use code without exposing the owner key
     );
     assert.equal((await redeem(base, code)).status, 401);
     assert.equal(
-      store.db.prepare("SELECT count(*) AS n FROM access_codes").get()!.n,
+      store.db.prepare("SELECT count(*) AS n FROM account_access_codes").get()!
+        .n,
       0,
     );
   } finally {
@@ -265,7 +260,9 @@ test("codes expire, are replaced or revoked, and become invalid when their sourc
   const { store, base, cookie, close } = await fixture();
   try {
     const expired = await createCode(base, cookie);
-    store.db.prepare("UPDATE access_codes SET expires=?").run(Date.now() - 1);
+    store.db
+      .prepare("UPDATE account_access_codes SET expires=?")
+      .run(Date.now() - 1);
     assert.equal((await redeem(base, expired)).status, 401);
     const replaced = await createCode(base, cookie);
     const current = await createCode(base, cookie);
@@ -294,14 +291,17 @@ test("codes expire, are replaced or revoked, and become invalid when their sourc
     );
     assert.equal((await redeem(base, current)).status, 401);
     const sourceExpired = await createCode(base, cookie);
-    store.db.prepare("UPDATE logins SET expires=?").run(Date.now() - 1);
+    store.db.prepare("UPDATE account_logins SET expires=?").run(Date.now() - 1);
     assert.equal((await redeem(base, sourceExpired)).status, 401);
-    store.db.prepare("UPDATE logins SET expires=?").run(Date.now() + 100000);
+    store.db
+      .prepare("UPDATE account_logins SET expires=?")
+      .run(Date.now() + 100000);
     const logoutCode = await createCode(base, cookie);
     await fetch(`${base}/api/logout`, { method: "POST", headers: { cookie } });
     assert.equal((await redeem(base, logoutCode)).status, 401);
     assert.equal(
-      store.db.prepare("SELECT count(*) AS n FROM access_codes").get()!.n,
+      store.db.prepare("SELECT count(*) AS n FROM account_access_codes").get()!
+        .n,
       0,
     );
   } finally {
@@ -319,7 +319,7 @@ test("simultaneous redemptions create exactly one session and invalid codes are 
       [200, 401],
     );
     assert.equal(
-      store.db.prepare("SELECT count(*) AS n FROM logins").get()!.n,
+      store.db.prepare("SELECT count(*) AS n FROM account_logins").get()!.n,
       2,
     );
     for (let i = 0; i < 9; i++)

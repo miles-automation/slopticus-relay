@@ -21,7 +21,7 @@ The iPhone app is not yet available for general download.
 ```sh
 git clone https://github.com/miles-automation/slopticus-relay.git
 cd slopticus-relay
-git checkout v0.15.0
+git checkout v0.15.1
 cp .env.example .env
 ```
 
@@ -46,7 +46,7 @@ iPhone…**, enter the same HTTPS origin, and choose **Connect this Mac**. Appro
 the matching code in your browser and select its workspace. Then pair the
 iPhone from the Mac. Verify the invitation shows your relay address.
 
-New installations need no owner access key. To sign in another browser, an
+No owner access key is required. To sign in another browser, an
 existing session can issue a one-use code. Select **Use a one-use code instead**
 in the other browser and enter that temporary code.
 
@@ -65,8 +65,8 @@ computer registrations. Endpoint pairing identities stay on the clients.
 
 Pin a reviewed Git tag or commit before building an update. Back up the
 database first. Do not roll a multi-tenant database back to a pre-tenancy server.
-See [deployment and migration](docs/deploy.md) for configuration and legacy
-owner migration. Official Mac downloads and updates use slopticus.com; they
+See [deployment and upgrades](docs/deploy.md) for configuration and the
+retirement of old single-owner credentials. Official Mac downloads and updates use slopticus.com; they
 are separate from your relay connection.
 
 ## Develop
