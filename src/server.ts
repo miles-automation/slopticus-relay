@@ -11,7 +11,6 @@ mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 const store = new Store(path);
 const origin = process.env.SLOPTICUS_ORIGIN ?? `http://localhost:${port}`;
 const app = createApp(store, {
-  ownerToken: process.env.SLOPTICUS_OWNER_TOKEN ?? "",
   origin,
   publicSignup: process.env.SLOPTICUS_PUBLIC_SIGNUP === "1",
   publicDir: resolve("public"),

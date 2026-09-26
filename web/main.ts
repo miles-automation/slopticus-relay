@@ -22,14 +22,11 @@ import "@fontsource/space-grotesk/latin-500.css";
 import "./base.css";
 import "./phone.css";
 const app = document.querySelector<HTMLDivElement>("#app")!;
-type Identity =
-  | { kind: "legacy"; workspaces: WorkspaceView[] }
-  | {
-      kind: "account";
-      account: { username: string; display_name: string };
-      workspaces: WorkspaceView[];
-      legacy_available: boolean;
-    };
+type Identity = {
+  kind: "account";
+  account: { username: string; display_name: string };
+  workspaces: WorkspaceView[];
+};
 let computers: ComputerView[] | undefined,
   identity: Identity | undefined,
   workspaceId = "",
@@ -51,14 +48,10 @@ function error(message: string) {
   const el = document.querySelector("#status");
   if (el) el.textContent = message;
 }
-function login(migration = false) {
+function login() {
   signedIn = false;
   painted = "";
-  app.innerHTML = loginHTML(
-    loginContextForHash(location.hash),
-    signupEnabled,
-    migration,
-  );
+  app.innerHTML = loginHTML(loginContextForHash(location.hash), signupEnabled);
   const submit = (selector: string, action: () => Promise<void>): void => {
     document.querySelector<HTMLFormElement>(selector)!.onsubmit = (
       event,
@@ -138,18 +131,6 @@ function login(migration = false) {
         button.disabled = false;
       }
     });
-  submit("#legacy-login", async () => {
-    try {
-      await api("login", {
-        token: value("#key"),
-      });
-      await refresh();
-    } catch (e) {
-      document.querySelector("#legacy-status")!.textContent = (
-        e as Error
-      ).message;
-    }
-  });
 }
 function headerHTML() {
   const choices =
@@ -191,7 +172,7 @@ function workspaceActions(): void {
   const teamAdmin =
     active?.kind === "shared" && active.organization_role !== "member";
   const workspaceAdmin = active?.kind === "shared" && active.role !== "member";
-  dialog.innerHTML = `<button class="quiet close">Close ×</button><h2>Workspaces</h2><p>Your private workspace is yours alone. A team workspace is visible to its invited members and the organization owner, who can recover administration if someone leaves. Sharing shows computer inventory; a phone still needs its own pairing on the Mac.</p><form id="create-org"><label for="org-name">New organization</label><input id="org-name" maxlength="80" required><button>Create organization and shared workspace</button></form>${teamAdmin ? '<form id="create-workspace"><label for="workspace-name">Another workspace in this organization</label><input id="workspace-name" maxlength="80" required><button>Create workspace</button></form>' : ""}${workspaceAdmin ? `<form id="invite"><label for="invite-role">Invite to this workspace</label><select id="invite-role"><option value="member">Member: view computers</option><option value="admin">Workspace admin: approve and disconnect computers</option>${active?.organization_role === "owner" ? '<option value="organization_admin">Organization admin: create workspaces too</option>' : ""}</select><button>Create one-use invitation</button></form><input id="invite-result" readonly hidden spellcheck="false"><div id="workspace-members"></div>` : ""}${active?.organization_role === "owner" && active.kind === "shared" ? '<div id="organization-members"></div>' : ""}<form id="join"><label for="join-code">Join a shared workspace</label><input id="join-code" required spellcheck="false"><button>Join with invitation code</button></form>${identity?.kind === "account" && identity.legacy_available ? '<form id="claim-legacy"><label for="legacy-key">Move existing computers to your account</label><input id="legacy-key" type="password" required><button>Claim existing computers</button></form>' : ""}<p id="workspace-status" role="status"></p>`;
+  dialog.innerHTML = `<button class="quiet close">Close ×</button><h2>Workspaces</h2><p>Your private workspace is yours alone. A team workspace is visible to its invited members and the organization owner, who can recover administration if someone leaves. Sharing shows computer inventory; a phone still needs its own pairing on the Mac.</p><form id="create-org"><label for="org-name">New organization</label><input id="org-name" maxlength="80" required><button>Create organization and shared workspace</button></form>${teamAdmin ? '<form id="create-workspace"><label for="workspace-name">Another workspace in this organization</label><input id="workspace-name" maxlength="80" required><button>Create workspace</button></form>' : ""}${workspaceAdmin ? `<form id="invite"><label for="invite-role">Invite to this workspace</label><select id="invite-role"><option value="member">Member: view computers</option><option value="admin">Workspace admin: approve and disconnect computers</option>${active?.organization_role === "owner" ? '<option value="organization_admin">Organization admin: create workspaces too</option>' : ""}</select><button>Create one-use invitation</button></form><input id="invite-result" readonly hidden spellcheck="false"><div id="workspace-members"></div>` : ""}${active?.organization_role === "owner" && active.kind === "shared" ? '<div id="organization-members"></div>' : ""}<form id="join"><label for="join-code">Join a shared workspace</label><input id="join-code" required spellcheck="false"><button>Join with invitation code</button></form><p id="workspace-status" role="status"></p>`;
   const status = dialog.querySelector<HTMLElement>("#workspace-status")!;
   const close = (): void => {
     dialog.close();
@@ -315,13 +296,6 @@ function workspaceActions(): void {
       code: value("#join-code").trim(),
     });
     workspaceId = joined.id;
-    close();
-  });
-  bind("#claim-legacy", async () => {
-    const claimed: { workspace_id: string } = await api("legacy/claim", {
-      recovery_key: value("#legacy-key"),
-    });
-    workspaceId = claimed.workspace_id;
     close();
   });
   dialog.showModal();
@@ -462,10 +436,6 @@ async function refresh() {
     }
     if (!response.ok) throw new Error("Unable to refresh");
     const me = (await response.json()) as Identity;
-    if (me.kind === "legacy") {
-      login(true);
-      return;
-    }
     identity = me;
     if (!me.workspaces.some((workspace) => workspace.id === workspaceId))
       workspaceId = me.workspaces[0]?.id ?? "";

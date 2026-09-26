@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Slopticus accounts and workspaces",
-    "version": "0.15.0",
+    "version": "0.15.1",
     "description": "Browser API for relay accounts and scoped workspaces. State-changing requests reject a browser Origin other than the configured relay origin. Account sessions are expiring HttpOnly SameSite=Strict cookies, Secure over HTTPS. Invitations and recovery codes are shown once; clients must not log them."
   },
   "paths": {
@@ -11,7 +11,7 @@
         "summary": "Discover whether public signup is open",
         "responses": {
           "200": {
-            "description": "Example: {\"public_signup\":false}. A legacy owner key keeps signup closed even when the signup flag is set."
+            "description": "Example: {\"public_signup\":true}. Registration is controlled by SLOPTICUS_PUBLIC_SIGNUP."
           }
         }
       }
@@ -19,7 +19,7 @@
     "/api/signup": {
       "post": {
         "summary": "Create an account and private workspace",
-        "description": "Public signup requires SLOPTICUS_PUBLIC_SIGNUP=1 and no configured legacy owner key. During migration a signed-in legacy owner may create an account and claim the existing computers. Passwords require 12–128 characters. The recovery code is returned only once.",
+        "description": "Set SLOPTICUS_PUBLIC_SIGNUP=1 to permit fresh account creation. No server access key is required. Passwords require 12–128 characters. The recovery code is returned only once.",
         "requestBody": {
           "required": true,
           "content": {
@@ -190,35 +190,9 @@
         "security": [{ "accountCookie": [] }],
         "responses": {
           "200": {
-            "description": "Account object, workspaces with organization and workspace roles, and legacy_available; legacy owner sessions return kind=legacy and only the migration workspace."
+            "description": "Account object and accessible workspaces with organization and workspace roles."
           },
           "401": { "description": "Not signed in." }
-        }
-      }
-    },
-    "/api/legacy/claim": {
-      "post": {
-        "summary": "Claim pre-tenancy computers once",
-        "security": [{ "accountCookie": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["recovery_key"],
-                "properties": { "recovery_key": { "type": "string" } }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Returns legacy workspace_id and revokes old owner sessions."
-          },
-          "401": { "description": "Owner key incorrect." },
-          "403": { "description": "Account required." },
-          "409": { "description": "Already claimed." }
         }
       }
     },
@@ -239,10 +213,7 @@
           "201": {
             "description": "The first Workspace; creator is organization and workspace owner."
           },
-          "401": { "description": "Not signed in." },
-          "403": {
-            "description": "Legacy session cannot create organizations."
-          }
+          "401": { "description": "Not signed in." }
         }
       }
     },

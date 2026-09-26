@@ -1,7 +1,6 @@
 import { randomBytes, createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { InventoryStore } from "./inventory.js";
-import { LEGACY_WORKSPACE_ID } from "./tenancy.js";
 
 export const PAIRING_TTL = 10 * 60_000;
 const hash = (value: string): string =>
@@ -24,12 +23,6 @@ export class ComputerPairing {
       db.exec(
         "ALTER TABLE computer_pairings ADD COLUMN workspace_id TEXT REFERENCES workspaces(id)",
       );
-      db.prepare(
-        "DELETE FROM computer_pairings WHERE computer_id IS NULL",
-      ).run();
-      db.prepare(
-        "UPDATE computer_pairings SET workspace_id=? WHERE workspace_id IS NULL",
-      ).run(LEGACY_WORKSPACE_ID);
     }
   }
   begin(
@@ -72,7 +65,7 @@ export class ComputerPairing {
     code: string,
     approve: boolean,
     now = Date.now(),
-    workspaceId = LEGACY_WORKSPACE_ID,
+    workspaceId: string,
   ): boolean {
     if (approve)
       return (
@@ -101,6 +94,7 @@ export class ComputerPairing {
       .get(hash(secret), now);
     if (!row) return undefined;
     if (!row.approved) return { status: "pending" };
+    if (typeof row.workspace_id !== "string") return undefined;
     const token = hash(`slopticus-computer-reporting:${secret}`);
     if (row.computer_id) {
       if (!this.inventory.authenticate(token)) return undefined;
@@ -110,7 +104,7 @@ export class ComputerPairing {
         const paired = this.inventory.pair(
           String(row.name),
           token,
-          String(row.workspace_id ?? LEGACY_WORKSPACE_ID),
+          row.workspace_id,
         );
         this.db
           .prepare(

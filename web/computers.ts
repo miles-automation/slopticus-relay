@@ -60,7 +60,7 @@ export function wireComputers(
     pairButton.onclick = (): void => {
       const dialog = document.querySelector<HTMLDialogElement>("#setup")!;
       dialog.innerHTML =
-        '<button class="quiet close">Close ×</button><h2>Connect your Mac</h2><p>On the Mac you want to connect, install and open Slopticus. The connection window opens automatically on a new Mac. Enter this relay’s HTTPS address, choose <strong>Connect this Mac</strong>, and approve the matching code when your browser opens here.</p><p><a href="https://slopticus.com/download/mac/arm64">Download for Apple silicon</a> · <a href="https://slopticus.com/download/mac/x64">Download for Intel</a></p><p class="muted">No commands or access keys to copy. For an older single-owner server, the existing owner recovery key is only needed to migrate its computers.</p><p class="muted">Slopticus reports supported coding sessions and activity. Prompts and transcripts stay on your computer.</p>';
+        '<button class="quiet close">Close ×</button><h2>Connect your Mac</h2><p>On the Mac you want to connect, install and open Slopticus. The connection window opens automatically on a new Mac. Enter this relay’s HTTPS address, choose <strong>Connect this Mac</strong>, and approve the matching code when your browser opens here.</p><p><a href="https://slopticus.com/download/mac/arm64">Download for Apple silicon</a> · <a href="https://slopticus.com/download/mac/x64">Download for Intel</a></p><p class="muted">No commands or access keys to copy.</p><p class="muted">Slopticus reports supported coding sessions and activity. Prompts and transcripts stay on your computer.</p>';
       dialog.querySelector<HTMLButtonElement>(".close")!.onclick = (): void => {
         dialog.close();
         void refresh();

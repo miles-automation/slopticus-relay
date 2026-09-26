@@ -9,11 +9,8 @@ import type { DatabaseSync } from "node:sqlite";
 const hash = (value: string): string =>
   createHash("sha256").update(value).digest("hex");
 
-const LEGACY_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
-export const LEGACY_WORKSPACE_ID = "00000000-0000-4000-8000-000000000002";
 const passwordOptions = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 export type WorkspaceRole = "member" | "admin" | "owner";
-export class LegacyAlreadyClaimedError extends Error {}
 export type WorkspaceView = {
   id: string;
   name: string;
@@ -64,8 +61,7 @@ export class TenancyStore {
       expires INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS account_access_codes(
       code_hash TEXT PRIMARY KEY, login_hash TEXT UNIQUE NOT NULL
-      REFERENCES account_logins(token_hash) ON DELETE CASCADE, expires INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS tenancy_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+      REFERENCES account_logins(token_hash) ON DELETE CASCADE, expires INTEGER NOT NULL);`);
     if (
       !db
         .prepare("PRAGMA table_info(workspace_invitations)")
@@ -75,63 +71,16 @@ export class TenancyStore {
       db.exec(
         "ALTER TABLE workspace_invitations ADD COLUMN organization_role TEXT NOT NULL DEFAULT 'member'",
       );
-    db.prepare(
-      "INSERT OR IGNORE INTO organizations(id,name,kind) VALUES(?,?,'legacy')",
-    ).run(LEGACY_ORGANIZATION_ID, "Existing Slopticus");
-    db.prepare(
-      "INSERT OR IGNORE INTO workspaces(id,organization_id,name,kind) VALUES(?,?,?,'private')",
-    ).run(LEGACY_WORKSPACE_ID, LEGACY_ORGANIZATION_ID, "Existing computers");
     db.exec(`INSERT OR IGNORE INTO workspace_members(workspace_id,account_id,role)
       SELECT w.id,om.account_id,'owner' FROM workspaces w
       JOIN organizations o ON o.id=w.organization_id AND o.kind='team'
       JOIN organization_members om ON om.organization_id=o.id AND om.role='owner'`);
   }
 
-  isLegacyClaimed(): boolean {
-    return Boolean(
-      this.db
-        .prepare(
-          "SELECT value FROM tenancy_settings WHERE key='legacy_claimed_by'",
-        )
-        .get(),
-    );
-  }
-
-  claimLegacy(accountId: string): boolean {
-    this.db.exec("BEGIN IMMEDIATE");
-    try {
-      if (!this.claimLegacyInTransaction(accountId)) {
-        this.db.exec("ROLLBACK");
-        return false;
-      }
-      this.db.exec("COMMIT");
-      return true;
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
-    }
-  }
-
-  private claimLegacyInTransaction(accountId: string): boolean {
-    if (this.isLegacyClaimed()) return false;
-    this.db
-      .prepare("INSERT INTO organization_members VALUES(?,?, 'owner')")
-      .run(LEGACY_ORGANIZATION_ID, accountId);
-    this.db
-      .prepare("INSERT INTO workspace_members VALUES(?,?, 'owner')")
-      .run(LEGACY_WORKSPACE_ID, accountId);
-    this.db
-      .prepare("INSERT INTO tenancy_settings VALUES('legacy_claimed_by',?)")
-      .run(accountId);
-    this.db.prepare("DELETE FROM logins").run();
-    return true;
-  }
-
   async createAccount(
     username: string,
     displayName: string,
     password: string,
-    claimLegacy = false,
   ): Promise<{
     account_id: string;
     recovery_code: string;
@@ -145,10 +94,6 @@ export class TenancyStore {
     const workspaceId = randomUUID();
     this.db.exec("BEGIN IMMEDIATE");
     try {
-      if (claimLegacy && this.isLegacyClaimed())
-        throw new LegacyAlreadyClaimedError(
-          "Existing computers were already claimed",
-        );
       this.db
         .prepare("INSERT INTO accounts VALUES(?,?,?,?,?,?,?)")
         .run(
@@ -172,10 +117,6 @@ export class TenancyStore {
       this.db
         .prepare("INSERT INTO workspace_members VALUES(?,?, 'owner')")
         .run(workspaceId, accountId);
-      if (claimLegacy && !this.claimLegacyInTransaction(accountId))
-        throw new LegacyAlreadyClaimedError(
-          "Existing computers were already claimed",
-        );
       this.db.exec("COMMIT");
       return {
         account_id: accountId,

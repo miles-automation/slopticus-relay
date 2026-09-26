@@ -15,7 +15,7 @@ import { createApp } from "../src/app.js";
 async function listen(releasesDir: string) {
   const store = new Store(":memory:");
   const server = createApp(store, {
-    ownerToken: "a".repeat(40),
+    publicSignup: true,
     origin: "http://localhost",
     releasesDir,
   }).listen(0, "127.0.0.1");
