@@ -1,0 +1,33 @@
+name: Relay checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: make check
+      - run: make test
+      - run: make build
+      - name: Verify relay-only output
+        run: |
+          test ! -e dist/local
+          test ! -e dist/adapter.js
+          test ! -e public/local.html
+      - name: Verify Compose configuration
+        run: RELAY_HOSTNAME=relay.example.com docker compose config --quiet
+      - name: Build and smoke test container
+        run: |
+          docker build -t slopticus-relay:test .
+          docker run --rm -d --name relay-test -p 127.0.0.1:18787:8787 -e SLOPTICUS_ORIGIN=http://localhost:18787 -e SLOPTICUS_PUBLIC_SIGNUP=1 slopticus-relay:test
+          trap 'docker stop relay-test' EXIT
+          curl --fail --max-time 5 --retry 15 --retry-delay 1 --retry-all-errors http://127.0.0.1:18787/healthz
+          curl --fail http://127.0.0.1:18787/api/config

@@ -1,0 +1,116 @@
+:root {
+  --hull: #0a1116;
+  --panel: #0e181e;
+  --raised: #132029;
+  --line: #1e3039;
+  --line-strong: #2c4450;
+  --ink: #d6e3e7;
+  --dim: #7f969e;
+  --faint: #536872;
+  --amber: #ffb454;
+  --amber-ink: #ffd08a;
+  --amber-line: #a3702d;
+  --amber-wash: rgba(255, 180, 84, 0.08);
+  --cyan: #5cd8db;
+  --cyan-line: #2d7f82;
+  --cyan-wash: rgba(92, 216, 219, 0.07);
+  --red: #ff6f62;
+  --red-wash: rgba(255, 111, 98, 0.12);
+  --red-ink: #ffd9d5;
+  --bright: #fff0d4;
+  --claude: #d97757;
+  --codex: #6ea8fe;
+  --display: Rajdhani, "Avenir Next Condensed", "Arial Narrow", sans-serif;
+  --text: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --header: 56px;
+  color-scheme: dark;
+  font-family: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--hull);
+  font-synthesis: none;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+  background: var(--amber);
+  color: var(--hull);
+  padding: 10px 16px;
+  font: 600 15px var(--display);
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+button:hover {
+  background: var(--amber-ink);
+  border-color: var(--amber-ink);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+input,
+textarea,
+select {
+  border: 1px solid var(--line-strong);
+  background: var(--hull);
+  color: var(--ink);
+}
+input:focus,
+textarea:focus,
+select:focus {
+  outline: 0;
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 1px var(--cyan-line);
+}
+::placeholder {
+  color: var(--faint);
+}
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+a {
+  color: var(--cyan);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}

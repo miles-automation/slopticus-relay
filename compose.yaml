@@ -1,0 +1,28 @@
+services:
+  relay:
+    build: .
+    image: slopticus-relay:local
+    restart: unless-stopped
+    environment:
+      SLOPTICUS_ORIGIN: https://${RELAY_HOSTNAME:?Set RELAY_HOSTNAME in .env}
+      SLOPTICUS_PUBLIC_SIGNUP: "1"
+      SLOPTICUS_SECURE_PAIRING: "1"
+    volumes:
+      - ./data:/app/data
+    expose:
+      - "8787"
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      RELAY_HOSTNAME: ${RELAY_HOSTNAME:?Set RELAY_HOSTNAME in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - relay
+volumes:
+  caddy_data:

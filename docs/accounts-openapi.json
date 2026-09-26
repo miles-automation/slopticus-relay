@@ -1,0 +1,449 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Slopticus accounts and workspaces",
+    "version": "0.15.0",
+    "description": "Browser API for relay accounts and scoped workspaces. State-changing requests reject a browser Origin other than the configured relay origin. Account sessions are expiring HttpOnly SameSite=Strict cookies, Secure over HTTPS. Invitations and recovery codes are shown once; clients must not log them."
+  },
+  "paths": {
+    "/api/config": {
+      "get": {
+        "summary": "Discover whether public signup is open",
+        "responses": {
+          "200": {
+            "description": "Example: {\"public_signup\":false}. A legacy owner key keeps signup closed even when the signup flag is set."
+          }
+        }
+      }
+    },
+    "/api/signup": {
+      "post": {
+        "summary": "Create an account and private workspace",
+        "description": "Public signup requires SLOPTICUS_PUBLIC_SIGNUP=1 and no configured legacy owner key. During migration a signed-in legacy owner may create an account and claim the existing computers. Passwords require 12–128 characters. The recovery code is returned only once.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["username", "display_name", "password"],
+                "properties": {
+                  "username": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._-]{2,31}$"
+                  },
+                  "display_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  }
+                }
+              },
+              "example": {
+                "username": "alex",
+                "display_name": "Alex",
+                "password": "a long unique passphrase"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sets slopticus cookie; returns recovery_code and workspace_id."
+          },
+          "400": { "description": "Invalid input." },
+          "403": { "description": "Signup not open." },
+          "409": { "description": "Username unavailable." },
+          "429": { "description": "Signup rate limit." }
+        }
+      }
+    },
+    "/api/login/account": {
+      "post": {
+        "summary": "Sign in with username and password",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["username", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sets account session cookie; returns {\"ok\":true}."
+          },
+          "401": { "description": "Incorrect credentials." },
+          "429": { "description": "Too many attempts." }
+        }
+      }
+    },
+    "/api/recover": {
+      "post": {
+        "summary": "Reset password with one-time recovery code",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["username", "recovery_code", "password"],
+                "properties": {
+                  "username": { "type": "string" },
+                  "recovery_code": { "type": "string" },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 128
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Revokes every previous account session, sets a new cookie, and returns a replacement recovery_code shown once."
+          },
+          "401": {
+            "description": "Incorrect or already used recovery code."
+          },
+          "429": { "description": "Too many attempts." }
+        }
+      }
+    },
+    "/api/access-codes": {
+      "post": {
+        "summary": "Create a one-use sign-in code for the current account",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Returns code and Unix-millisecond expiry; creating another on the same browser replaces it. The code is shown once."
+          },
+          "401": { "description": "Not signed in." }
+        }
+      },
+      "delete": {
+        "summary": "Revoke this browser's pending sign-in code",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": { "description": "Returns {\"ok\":true}." },
+          "401": { "description": "Not signed in." }
+        }
+      }
+    },
+    "/api/login/code": {
+      "post": {
+        "summary": "Redeem a one-use sign-in code",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["code"],
+                "properties": { "code": { "type": "string" } }
+              },
+              "example": { "code": "ABCD-EF12-3456-7890-ABCD-EF12" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sets a new session cookie for the account that issued the code."
+          },
+          "401": {
+            "description": "Invalid, expired, revoked, or already used code."
+          },
+          "429": { "description": "Too many attempts." }
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "summary": "End the current browser session and revoke its pending sign-in code",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": { "description": "Clears cookie and returns {\"ok\":true}." },
+          "401": { "description": "Not signed in." }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "summary": "Get current account and explicitly joined workspaces",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Account object, workspaces with organization and workspace roles, and legacy_available; legacy owner sessions return kind=legacy and only the migration workspace."
+          },
+          "401": { "description": "Not signed in." }
+        }
+      }
+    },
+    "/api/legacy/claim": {
+      "post": {
+        "summary": "Claim pre-tenancy computers once",
+        "security": [{ "accountCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["recovery_key"],
+                "properties": { "recovery_key": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Returns legacy workspace_id and revokes old owner sessions."
+          },
+          "401": { "description": "Owner key incorrect." },
+          "403": { "description": "Account required." },
+          "409": { "description": "Already claimed." }
+        }
+      }
+    },
+    "/api/organizations": {
+      "post": {
+        "summary": "Create a team organization and its first shared workspace",
+        "security": [{ "accountCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/NameInput" },
+              "example": { "name": "Engineering" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The first Workspace; creator is organization and workspace owner."
+          },
+          "401": { "description": "Not signed in." },
+          "403": {
+            "description": "Legacy session cannot create organizations."
+          }
+        }
+      }
+    },
+    "/api/organizations/{id}/workspaces": {
+      "parameters": [{ "$ref": "#/components/parameters/OrganizationId" }],
+      "post": {
+        "summary": "Create another shared workspace",
+        "security": [{ "accountCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/NameInput" },
+              "example": { "name": "Research Macs" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Workspace; creator is its administrator." },
+          "403": { "description": "Organization administrator required." }
+        }
+      }
+    },
+    "/api/organizations/{id}/members": {
+      "parameters": [{ "$ref": "#/components/parameters/OrganizationId" }],
+      "get": {
+        "summary": "List organization members",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Array of account id, username and organization role."
+          },
+          "403": { "description": "Organization owner required." }
+        }
+      }
+    },
+    "/api/organizations/{id}/members/{accountId}/remove": {
+      "parameters": [
+        { "$ref": "#/components/parameters/OrganizationId" },
+        { "$ref": "#/components/parameters/AccountId" }
+      ],
+      "post": {
+        "summary": "Remove member from organization and every workspace in it",
+        "description": "Revokes invitations they created in this organization. Previously paired phones require separate revocation on each Mac.",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": { "description": "Returns {\"ok\":true}." },
+          "403": {
+            "description": "Organization owner required, or target is an owner or not a member."
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/invitations": {
+      "parameters": [{ "$ref": "#/components/parameters/WorkspaceId" }],
+      "post": {
+        "summary": "Create a one-use shared-workspace invitation",
+        "security": [{ "accountCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["role"],
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": ["member", "admin", "organization_admin"]
+                  }
+                }
+              },
+              "example": { "role": "member" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Returns code and expiry in Unix milliseconds; code is shown once and expires in seven days."
+          },
+          "403": {
+            "description": "Shared-workspace administrator required; only the organization owner can invite an organization administrator."
+          }
+        }
+      }
+    },
+    "/api/workspaces/{id}/members": {
+      "parameters": [{ "$ref": "#/components/parameters/WorkspaceId" }],
+      "get": {
+        "summary": "List people with access to a workspace",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Array of account id, username, display_name and workspace role."
+          },
+          "403": { "description": "Workspace administrator required." }
+        }
+      }
+    },
+    "/api/workspaces/{id}/members/{accountId}/remove": {
+      "parameters": [
+        { "$ref": "#/components/parameters/WorkspaceId" },
+        { "$ref": "#/components/parameters/AccountId" }
+      ],
+      "post": {
+        "summary": "Remove a workspace member",
+        "description": "Revokes invitations created by the removed member for this workspace; does not unpair a phone on a Mac.",
+        "security": [{ "accountCookie": [] }],
+        "responses": {
+          "200": { "description": "Returns {\"ok\":true}." },
+          "403": {
+            "description": "Workspace administrator required; only an owner can remove an administrator, and owners cannot be removed."
+          }
+        }
+      }
+    },
+    "/api/invitations/accept": {
+      "post": {
+        "summary": "Join the exact workspace named by an invitation",
+        "security": [{ "accountCookie": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["code"],
+                "properties": { "code": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Joined Workspace; adds organization membership without granting other workspaces."
+          },
+          "403": { "description": "Account required." },
+          "410": { "description": "Invitation expired or already used." }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "accountCookie": { "type": "apiKey", "in": "cookie", "name": "slopticus" }
+    },
+    "parameters": {
+      "OrganizationId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "WorkspaceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "AccountId": {
+        "name": "accountId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "schemas": {
+      "NameInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 }
+        }
+      },
+      "Workspace": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "organization_id",
+          "organization_name",
+          "role",
+          "organization_role"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "kind": { "type": "string", "enum": ["private", "shared"] },
+          "organization_id": { "type": "string", "format": "uuid" },
+          "organization_name": { "type": "string" },
+          "role": { "type": "string", "enum": ["member", "admin", "owner"] },
+          "organization_role": {
+            "type": "string",
+            "enum": ["member", "admin", "owner"]
+          }
+        }
+      }
+    }
+  }
+}

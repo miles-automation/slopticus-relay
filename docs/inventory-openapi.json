@@ -1,0 +1,689 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Slopticus computer inventory",
+    "version": "0.15.0",
+    "description": "Observation-only API. Computer keys cannot access account endpoints. Browser APIs require an account session cookie and workspace membership; mismatched browser Origins return 403. A legacy owner session is limited to the private migration workspace until claimed."
+  },
+  "paths": {
+    "/api/computers": {
+      "get": {
+        "summary": "List computer inventory",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "query",
+            "description": "Workspace to list. Required when the account belongs to multiple workspaces.",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "security": [
+          {
+            "ownerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Computers with connectivity, coverage and observed instances.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Computer"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Account sign-in required."
+          },
+          "403": {
+            "description": "Workspace membership required."
+          }
+        }
+      },
+      "post": {
+        "summary": "Pair a named computer",
+        "security": [
+          {
+            "ownerCookie": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Computer id and reporting token; token is shown once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "token"],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "token": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name."
+          },
+          "401": {
+            "description": "Account sign-in required."
+          },
+          "403": {
+            "description": "Workspace administrator required."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Workspace that will own the new computer. Required when the account can manage multiple workspaces."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/computers/{id}/revoke": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Revoke reporting and phone relay access; retain inventory",
+        "security": [
+          {
+            "ownerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked (idempotent).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok"],
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Account sign-in required."
+          },
+          "403": {
+            "description": "Workspace administrator required."
+          },
+          "404": {
+            "description": "Computer not found in the selected workspace."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workspace_id": { "type": "string", "format": "uuid" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/computer/identity": {
+      "get": {
+        "summary": "Validate reporting key without updating presence",
+        "security": [
+          {
+            "computerBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calling computer and receiver-confirmed online state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Computer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or revoked key."
+          }
+        }
+      }
+    },
+    "/api/computer/report": {
+      "post": {
+        "summary": "Submit observations for the credential-bound computer",
+        "security": [
+          {
+            "computerBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted, or identical retry with no presence refresh.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok"],
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid schema or duplicate instance ids."
+          },
+          "401": {
+            "description": "Invalid or revoked key."
+          },
+          "409": {
+            "description": "Old/conflicting sequence or changed instance identity."
+          },
+          "413": {
+            "description": "Body exceeds 256 KiB."
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["sequence", "observations", "coverage"],
+                "properties": {
+                  "sequence": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "observations": {
+                    "type": "array",
+                    "maxItems": 200,
+                    "items": {
+                      "$ref": "#/components/schemas/Observation"
+                    }
+                  },
+                  "coverage": {
+                    "type": "string",
+                    "enum": ["instrumented", "degraded"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "description": "Reports are metadata-only and cannot select another computer. Persist sequence before sending. Omitted instances expire after 45 seconds; they are never implicitly ended. Repeating a sequence requires identical normalized content. Example: {\"sequence\":1,\"observations\":[],\"coverage\":\"instrumented\"}. Browser requests must use the configured relay Origin."
+      }
+    },
+    "/api/computer-pairing": {
+      "post": {
+        "summary": "Begin a Mac connection request",
+        "description": "Unauthenticated; at most 10 starts per minute and 100 unexpired requests globally. Expires in ten minutes. Keep device_code private; only code goes in the browser fragment.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Pending request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "device_code": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "code": {
+                      "type": "string",
+                      "pattern": "^[A-F0-9]{12}$"
+                    },
+                    "expires": {
+                      "type": "integer",
+                      "description": "Expiry in Unix milliseconds"
+                    }
+                  },
+                  "required": ["device_code", "code", "expires"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid name"
+          },
+          "429": {
+            "description": "Too many requests"
+          }
+        }
+      }
+    },
+    "/api/computer-pairing/claim": {
+      "post": {
+        "summary": "Poll or recover approved computer credential",
+        "description": "Only the requesting Mac knows device_code. Repeated approved claims return the same inventory-only credential until expiry; revoked credentials cannot be recovered. Response never creates multiple computers for one request.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "device_code": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  }
+                },
+                "required": ["device_code"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pending or approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "pending"
+                        }
+                      },
+                      "required": ["status"]
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "status": {
+                          "const": "approved"
+                        },
+                        "token": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["status", "token"]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed secret"
+          },
+          "410": {
+            "description": "Expired, declined, unknown or revoked request"
+          }
+        }
+      }
+    },
+    "/api/computer-pairing/{code}": {
+      "parameters": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{12}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Preview a request before approval",
+        "security": [
+          {
+            "ownerCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Computer display name and approval state only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["name", "approved"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "410": {
+            "description": "Request unavailable"
+          }
+        }
+      }
+    },
+    "/api/computer-pairing/{code}/decision": {
+      "parameters": [
+        {
+          "name": "code",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{12}$"
+          }
+        }
+      ],
+      "post": {
+        "summary": "Approve or decline a computer request",
+        "description": "A workspace administrator compares the code displayed in the Mac app and chooses the owning workspace. Cross-origin requests are rejected. The first approval fixes the workspace; later decisions cannot move it. Decline removes an unclaimed request.",
+        "security": [
+          {
+            "ownerCookie": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "approve": {
+                    "type": "boolean"
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Workspace to own the Mac on approval. Required when the account can manage multiple workspaces."
+                  }
+                },
+                "required": ["approve"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Decision saved"
+          },
+          "400": {
+            "description": "Invalid decision"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Origin rejected or workspace administrator required"
+          },
+          "410": {
+            "description": "Request unavailable"
+          }
+        }
+      }
+    },
+    "/api/computer/disconnect": {
+      "post": {
+        "summary": "Revoke the calling computer reporting credential",
+        "security": [
+          {
+            "computerBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Revoked; historical inventory preserved"
+          },
+          "401": {
+            "description": "Already revoked or invalid"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ownerCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "slopticus"
+      },
+      "computerBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Observation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance",
+          "native",
+          "provider",
+          "source",
+          "surface",
+          "project",
+          "activity",
+          "observed"
+        ],
+        "properties": {
+          "instance": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "native": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["claude", "codex"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["claude-hook", "slopticus-bridge"]
+          },
+          "surface": {
+            "type": "string",
+            "enum": ["desktop", "terminal", "managed", "unknown"]
+          },
+          "project": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "activity": {
+            "type": "string",
+            "enum": ["working", "idle", "ended", "unknown"]
+          },
+          "observed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Local event time in Unix milliseconds; not used for presence expiry."
+          }
+        }
+      },
+      "Computer": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "revoked",
+          "online",
+          "last_seen",
+          "coverage",
+          "sessions"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "last_seen": {
+            "type": ["integer", "null"],
+            "description": "Last accepted report receipt, Unix milliseconds."
+          },
+          "coverage": {
+            "type": "string",
+            "enum": ["unconnected", "instrumented", "degraded"]
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObservedInstance"
+            }
+          }
+        }
+      },
+      "ObservedInstance": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance",
+          "native",
+          "provider",
+          "source",
+          "surface",
+          "project",
+          "activity",
+          "observed",
+          "stale",
+          "reported_at"
+        ],
+        "properties": {
+          "instance": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "native": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["claude", "codex"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["claude-hook", "slopticus-bridge"]
+          },
+          "surface": {
+            "type": "string",
+            "enum": ["desktop", "terminal", "managed", "unknown"]
+          },
+          "project": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "activity": {
+            "type": "string",
+            "enum": ["working", "idle", "ended", "unknown"]
+          },
+          "observed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Local event time in Unix milliseconds; not used for presence expiry."
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "reported_at": {
+            "type": "integer",
+            "description": "Last accepted observation receipt, Unix milliseconds."
+          }
+        }
+      }
+    }
+  }
+}

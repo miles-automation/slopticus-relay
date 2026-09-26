@@ -1,0 +1,13 @@
+Slopticus Relay
+Copyright 2026 Rich Miles
+
+This repository was extracted from Slopticus revision
+6a61d64b84bf0bd8e2221d214f26c8827aca7ef4, which carried the Unlicense.
+The original dedication is preserved in LICENSES/Unlicense.txt. Apache-2.0
+applies to this repository's new contributions and distribution; this notice
+does not withdraw rights previously granted for the extracted code.
+
+Bundled dependencies and fonts retain their own licenses. The container
+retains dependency license files in node_modules and font license texts in
+LICENSES. Slopticus names and logos identify the project; the Apache license
+does not grant trademark rights.
