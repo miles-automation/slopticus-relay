@@ -19,7 +19,7 @@
         ],
         "security": [
           {
-            "ownerCookie": []
+            "accountCookie": []
           }
         ],
         "responses": {
@@ -48,7 +48,7 @@
         "summary": "Pair a named computer",
         "security": [
           {
-            "ownerCookie": []
+            "accountCookie": []
           }
         ],
         "responses": {
@@ -124,7 +124,7 @@
         "summary": "Revoke reporting and phone relay access; retain inventory",
         "security": [
           {
-            "ownerCookie": []
+            "accountCookie": []
           }
         ],
         "responses": {
@@ -408,7 +408,7 @@
         "summary": "Preview a request before approval",
         "security": [
           {
-            "ownerCookie": []
+            "accountCookie": []
           }
         ],
         "responses": {
@@ -458,7 +458,7 @@
         "description": "A workspace administrator compares the code displayed in the Mac app and chooses the owning workspace. Cross-origin requests are rejected. The first approval fixes the workspace; later decisions cannot move it. Decline removes an unclaimed request.",
         "security": [
           {
-            "ownerCookie": []
+            "accountCookie": []
           }
         ],
         "requestBody": {
@@ -523,7 +523,7 @@
   },
   "components": {
     "securitySchemes": {
-      "ownerCookie": {
+      "accountCookie": {
         "type": "apiKey",
         "in": "cookie",
         "name": "slopticus"
