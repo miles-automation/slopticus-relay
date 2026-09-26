@@ -21,7 +21,7 @@ The iPhone app is not yet available for general download.
 ```sh
 git clone https://github.com/miles-automation/slopticus-relay.git
 cd slopticus-relay
-git checkout v0.15.1
+git checkout v0.16.0
 cp .env.example .env
 ```
 
