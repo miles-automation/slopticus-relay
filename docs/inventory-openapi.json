@@ -6,6 +6,118 @@
     "description": "Observation-only API. Computer keys cannot access account endpoints. Browser APIs require an account session cookie and workspace membership; mismatched browser Origins return 403."
   },
   "paths": {
+    "/api/computer/push/devices": {
+      "post": {
+        "summary": "Replace this computer's phone notification tokens",
+        "description": "Sends the APNs device tokens of the phones this computer currently trusts. The list replaces any earlier list for this computer. Accepted even when the relay cannot send, which the response reports.",
+        "security": [
+          {
+            "computerBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["devices"],
+                "properties": {
+                  "devices": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["token", "environment"],
+                      "properties": {
+                        "token": {
+                          "type": "string",
+                          "pattern": "^[a-f0-9]{64}$"
+                        },
+                        "environment": {
+                          "type": "string",
+                          "enum": ["sandbox", "production"]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Example: {\"ok\":true,\"push\":true}."
+          },
+          "400": {
+            "description": "Invalid token list."
+          },
+          "401": {
+            "description": "Invalid or revoked computer key."
+          }
+        }
+      }
+    },
+    "/api/computer/push/notify": {
+      "post": {
+        "summary": "Notify this computer's phones about a session",
+        "description": "Carries no message content. The relay sends the alert \"<agent> in <project> needs you|finished|ended\" with the computer and session ids for opening the session. Repeats for one session within 30 seconds are coalesced; each computer may send a burst of 6 and then one every 20 seconds. Tokens APNs reports as unregistered or bad are deleted and listed in pruned.",
+        "security": [
+          {
+            "computerBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["session_id", "kind", "agent", "project"],
+                "properties": {
+                  "session_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": ["needs_you", "finished", "ended"]
+                  },
+                  "agent": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "project": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Example: {\"sent\":1,\"pruned\":[],\"dropped\":null}. dropped is coalesced, limited, no_devices or null."
+          },
+          "400": {
+            "description": "Invalid notice, including any extra field."
+          },
+          "401": {
+            "description": "Invalid or revoked computer key."
+          },
+          "503": {
+            "description": "This relay has no APNs settings."
+          }
+        }
+      }
+    },
     "/api/computer/name": {
       "post": {
         "summary": "Rename this authenticated computer",

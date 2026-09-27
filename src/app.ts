@@ -7,6 +7,13 @@ import { Store, hash, token } from "./store.js";
 import { TenancyStore } from "./tenancy.js";
 import { releaseRoutes } from "./releases.js";
 import { VERSION, PROTOCOL } from "./protocol.js";
+import type { PushSender } from "./apns.js";
+import {
+  PushDevices,
+  PushNotifier,
+  pushDevicesSchema,
+  pushNoticeSchema,
+} from "./push-relay.js";
 
 const text = z.string().trim().min(1).max(4000);
 const usernameSchema = z
@@ -23,6 +30,7 @@ export function createApp(
     publicSignup?: boolean;
     publicDir?: string;
     releasesDir?: string;
+    push?: PushSender;
   },
 ) {
   const publicSignupEnabled = options.publicSignup === true;
@@ -55,7 +63,7 @@ export function createApp(
     next();
   });
   app.get("/api/config", (_req, res) =>
-    res.json({ public_signup: publicSignupEnabled }),
+    res.json({ public_signup: publicSignupEnabled, push: !!options.push }),
   );
   const cookieToken = (req: express.Request) =>
     req.headers.cookie
@@ -261,6 +269,23 @@ export function createApp(
   app.post("/api/computer/disconnect", (_req, res) => {
     inventory.revoke(res.locals.computerId as string);
     res.json({ ok: true });
+  });
+  const pushDevices = new PushDevices(store.db);
+  const notifier = options.push
+    ? new PushNotifier(pushDevices, options.push)
+    : undefined;
+  app.post("/api/computer/push/devices", (req, res) => {
+    const { devices } = pushDevicesSchema.parse(req.body);
+    pushDevices.replace(res.locals.computerId as string, devices);
+    res.json({ ok: true, push: !!notifier });
+  });
+  app.post("/api/computer/push/notify", async (req, res) => {
+    const notice = pushNoticeSchema.parse(req.body);
+    if (!notifier) {
+      res.status(503).json({ error: "Push is not configured on this relay" });
+      return;
+    }
+    res.json(await notifier.notify(res.locals.computerId as string, notice));
   });
   app.post("/api/computer/report", (req, res) => {
     const data = reportSchema.parse(req.body);
