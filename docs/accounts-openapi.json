@@ -8,10 +8,10 @@
   "paths": {
     "/api/config": {
       "get": {
-        "summary": "Discover whether public signup is open",
+        "summary": "Discover whether public signup is open and phone notifications are available",
         "responses": {
           "200": {
-            "description": "Example: {\"public_signup\":true}. Registration is controlled by SLOPTICUS_PUBLIC_SIGNUP."
+            "description": "Example: {\"public_signup\":true,\"push\":true}. Registration is controlled by SLOPTICUS_PUBLIC_SIGNUP. push is true when the relay has APNs settings and can send phone notifications."
           }
         }
       }

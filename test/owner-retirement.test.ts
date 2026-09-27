@@ -221,6 +221,7 @@ test("only the signup setting controls fresh accounts and retired owner routes c
     try {
       assert.deepEqual(await (await fetch(base + "/api/config")).json(), {
         public_signup: publicSignup,
+        push: false,
       });
       for (const path of ["/api/login", "/api/legacy/claim"])
         assert.equal(

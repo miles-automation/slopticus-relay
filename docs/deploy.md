@@ -13,6 +13,10 @@ stores SQLite under `/app/data`. Keep that directory writable by UID 1000.
 | `HOST`                     | Listen interface                                         | Loopback; all interfaces in Docker |
 | `PORT`                     | Listen port                                              | `8787`                             |
 | `SLOPTICUS_RELEASES`       | Optional directory of signed Mac releases and appcasts   | `releases` next to the database    |
+| `SLOPTICUS_APNS_KEY_P8`    | APNs auth key: PEM, PEM with escaped newlines, or base64 | Unset; notifications off           |
+| `SLOPTICUS_APNS_KEY_ID`    | APNs key id                                              | Unset                              |
+| `SLOPTICUS_APNS_TEAM_ID`   | Apple developer team id that owns the key                | Unset                              |
+| `SLOPTICUS_APNS_TOPIC`     | Bundle id of the phone app                               | Unset                              |
 
 Owner-key authentication and migration were retired in 0.15.1. Back up the
 database before upgrading. Startup removes old owner cookies, sign-in codes,
